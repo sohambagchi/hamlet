@@ -9,9 +9,15 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.2",
     "vite": "^7.2.4"
   },
   "dependencies": {
-    "phaser": "^3.90.0"
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.562.0",
+    "phaser": "^3.90.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-router-dom": "^7.12.0"
   }
 }

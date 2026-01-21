@@ -60,6 +60,7 @@ public/
     *   Movement is normalized 8-way vector.
     *   Sorting anchors should be set to feet (`setOrigin(0.5, 1)`).
 *   **Placeholder Assets:** Do not add temporary images to `public/`. Use `Preloader.createPlaceholderTexture` to generate them programmatically until final assets are ready.
+*   **Context7 MCP:** Use the Context7 MCP to get up-to-date documentation for the modules used in the project. Make sure to query Context7 with the correct version information. 
 
 ## Future Hooks
 *   **Verbal Fencing:** The `Hamlet` class has `enterDialogueState` and `exitDialogueState` methods ready to be hooked into a UI/Dialogue system.
@@ -68,3 +69,4 @@ public/
 *   **Overview:** Frequently document progress made, tasks completed, to-do items, and detailed description of the entire project in `docs/`. Do a round of documentation at the end of every task. 
 *   **Single Source of Truth:** Prepare `docs/GUIDE.md` with all information about the project. Any entity should be able to gain a complete understanding of the current state of the project by reading the entirety of this GUIDE.md
 *   **Changelogs:** At the end of every task, prepare a changelog document in the form of a commit message in `docs/changelogs/HHMMSS-DDMMYYYY.commit.md. The first line should have a commit message, followed by a concise list of tasks accomplished, then a concise list of future work. If you have access to a Github MCP and if a git repo is initialized for this project, use this file to make a commit. 
+*   **Caching MCP Responses:** Anytime an MCP is used, cache the response in a file in `docs/mcp/` with a filename describing the query. 

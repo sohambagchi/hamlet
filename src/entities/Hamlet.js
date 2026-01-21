@@ -1,81 +1,97 @@
 import Phaser from 'phaser';
+import { StateMachine, State } from '../systems/StateMachine';
+
+class IdleState extends State {
+    enter(scene, hamlet) {
+        hamlet.setVelocity(0);
+
+        // Play Idle Animation based on last direction
+        // Default to south if unknown
+        const anim = hamlet.lastAnim || 'hamlet-idle-south';
+
+        // Convert walk/run anim name to idle
+        if (anim.includes('north')) hamlet.play('hamlet-idle-north');
+        else if (anim.includes('side')) hamlet.play('hamlet-idle-side');
+        else hamlet.play('hamlet-idle-south');
+    }
+
+    execute(scene, hamlet) {
+        const { left, right, up, down } = hamlet.cursors;
+        if (left.isDown || right.isDown || up.isDown || down.isDown) {
+            hamlet.stateMachine.changeState(new WalkState());
+        }
+    }
+}
+
+class WalkState extends State {
+    execute(scene, hamlet) {
+        const { left, right, up, down } = hamlet.cursors;
+
+        if (!(left.isDown || right.isDown || up.isDown || down.isDown)) {
+            hamlet.stateMachine.changeState(new IdleState());
+            return;
+        }
+
+        hamlet.setVelocity(0);
+
+        if (left.isDown) {
+            hamlet.setVelocityX(-hamlet.speed);
+            hamlet.setFlipX(true); // Flip for LEFT
+            hamlet.play('hamlet-walk-side', true);
+            hamlet.lastAnim = 'hamlet-walk-side';
+        } else if (right.isDown) {
+            hamlet.setVelocityX(hamlet.speed);
+            hamlet.setFlipX(false); // No flip for RIGHT
+            hamlet.play('hamlet-walk-side', true);
+            hamlet.lastAnim = 'hamlet-walk-side';
+        } else if (up.isDown) {
+            hamlet.setVelocityY(-hamlet.speed);
+            hamlet.play('hamlet-walk-north', true);
+            hamlet.lastAnim = 'hamlet-walk-north';
+        } else if (down.isDown) {
+            hamlet.setVelocityY(hamlet.speed);
+            hamlet.play('hamlet-walk-south', true);
+            hamlet.lastAnim = 'hamlet-walk-south';
+        }
+
+        hamlet.body.velocity.normalize().scale(hamlet.speed);
+    }
+}
 
 export default class Hamlet extends Phaser.Physics.Arcade.Sprite {
     constructor(scene, x, y) {
-        super(scene, x, y, 'hamlet');
+        // Use unified sprite sheet
+        super(scene, x, y, 'hamlet_unified');
 
-        // Add to scene and enable physics
+        // Add to scene and physics
         scene.add.existing(this);
         scene.physics.add.existing(this);
 
-        // Core Configuration
-        this.setOrigin(0.5, 1); // Anchor at feet for isometric sorting
-        this.setCollideWorldBounds(true);
-        this.body.setSize(12, 8); // Small hitbox at feet
-        this.body.setOffset(2, 8);
+        // Resize body? 64x64 is big. Let's make the hitbox smaller (feet)
+        // Assuming sprite is centeredish, maybe 16x16 feet box
+        this.body.setSize(16, 16);
+        this.body.setOffset(24, 48); // Near bottom center of 64x64
 
-        // Properties
-        this.speed = 80; // Pixels per second
-        this.currentState = 'EXPLORE'; // 'EXPLORE', 'COMBAT', 'DIALOGUE'
-        
-        // Input keys
+        // Key Config
         this.cursors = scene.input.keyboard.createCursorKeys();
-        
-        // "Verbal Fencing" Hook
-        // this.dialogueTarget = null;
+
+        // Physics Config
+        this.setCollideWorldBounds(true);
+        this.speed = 100;
+        this.lastAnim = 'hamlet-idle-south'; // Track direction
+
+        // State Machine
+        this.stateMachine = new StateMachine(new IdleState(), scene, this);
+
+        // Sorting Origin (Feet) - adjust for 64x64 sprite
+        // We want the feet anchor to be at the bottom center
+        this.setOrigin(0.5, 1);
     }
 
     update() {
-        if (this.currentState === 'EXPLORE') {
-            this.handleMovement();
-        } else if (this.currentState === 'COMBAT') {
-            // TODO: Handle combat logic
-        } else if (this.currentState === 'DIALOGUE') {
-            // TODO: Handle dialogue input (Verbal Fencing)
-            this.setVelocity(0, 0);
-        }
-    }
+        this.stateMachine.update();
 
-    handleMovement() {
-        const { left, right, up, down } = this.cursors;
-        let velX = 0;
-        let velY = 0;
-
-        // Basic 8-way input
-        if (left.isDown) velX -= 1;
-        if (right.isDown) velX += 1;
-        if (up.isDown) velY -= 1;
-        if (down.isDown) velY += 1;
-
-        // Normalize vector
-        const length = Math.sqrt(velX * velX + velY * velY);
-        if (length > 0) {
-            velX /= length;
-            velY /= length;
-            
-            // Isometric Transformation roughly applied to velocity
-            // In pure iso: Y movement is half X. But here we usually just move 
-            // naturally and let the art sell the perspective.
-            // However, to mimic 2:1 isometric movement feel:
-            // Moving 'up' in keypress corresponds to Up-Right or Up-Left visually?
-            // Standard top-down movement is usually fine for 2.5D if the speed is adjusted.
-            // Let's stick to standard normalized movement for now, as it feels best to play.
-            
-            this.setVelocity(velX * this.speed, velY * this.speed);
-        } else {
-            this.setVelocity(0, 0);
-        }
-    }
-    
-    // Hook for state transitions
-    enterDialogueState(target) {
-        this.currentState = 'DIALOGUE';
-        this.dialogueTarget = target;
-        // Trigger UI opening here
-    }
-
-    exitDialogueState() {
-        this.currentState = 'EXPLORE';
-        this.dialogueTarget = null;
+        // Isometric Sorting: Depth = Y
+        this.setDepth(this.y);
     }
 }
