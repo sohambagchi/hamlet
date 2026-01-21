@@ -134,3 +134,9 @@ A standalone web-based tool for processing raw AI-generated sprite sheets into g
     *   **Resuming:** Drop a project ZIP into the homepage to resume work exactly where you left off.
     *   **Export:** Name-conforming individual PNG chunks (Name_Pose_Index.png).
 *   **Access:** Run `npm run dev` and navigate to `/builder/` (e.g., `http://localhost:5173/builder/`).
+
+## 10. Vibe Kanban Integration
+This repo integrates `vibe-kanban-web-companion` so the app can be embedded and interacted with inside the Vibe Kanban interface.
+
+*   **Enabled in dev:** The companion mounts only when `import.meta.env.DEV` is true (both `/` and `/builder/`).
+*   **Usage:** Run `npm run dev`, then point Vibe Kanban’s web preview to the dev server URL.

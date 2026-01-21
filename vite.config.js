@@ -5,14 +5,29 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig({
-    plugins: [react()],
-    build: {
-        rollupOptions: {
-            input: {
-                main: resolve(__dirname, 'index.html'),
-                builder: resolve(__dirname, 'builder/index.html'),
+export default defineConfig(({ mode }) => {
+    const isDev = mode !== 'production';
+
+    return {
+        plugins: [
+            react({
+                babel: isDev
+                    ? {
+                          plugins: [
+                              '@babel/plugin-transform-react-jsx-self',
+                              '@babel/plugin-transform-react-jsx-source',
+                          ],
+                      }
+                    : undefined,
+            }),
+        ],
+        build: {
+            rollupOptions: {
+                input: {
+                    main: resolve(__dirname, 'index.html'),
+                    builder: resolve(__dirname, 'builder/index.html'),
+                },
             },
         },
-    },
+    };
 });

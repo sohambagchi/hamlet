@@ -18,6 +18,7 @@
     "phaser": "^3.90.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "react-router-dom": "^7.12.0"
+    "react-router-dom": "^7.12.0",
+    "vibe-kanban-web-companion": "^0.0.5"
   }
 }

@@ -3,6 +3,12 @@ import Preloader from './scenes/Preloader';
 import GameScene from './scenes/GameScene';
 import './style.css'; // Importing standard vite style to reset it or we can overwrite
 
+if (import.meta.env.DEV) {
+    import('./vibeKanbanWebCompanion.jsx').then(({ mountVibeKanbanWebCompanion }) => {
+        mountVibeKanbanWebCompanion();
+    });
+}
+
 const config = {
     type: Phaser.AUTO,
     width: 320,
