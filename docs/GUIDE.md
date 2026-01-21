@@ -139,4 +139,5 @@ A standalone web-based tool for processing raw AI-generated sprite sheets into g
 This repo integrates `vibe-kanban-web-companion` so the app can be embedded and interacted with inside the Vibe Kanban interface.
 
 *   **Enabled in dev:** The companion mounts only when `import.meta.env.DEV` is true (both `/` and `/builder/`).
+*   **Source mapping:** Click-to-source relies on the dev build emitting JSX source metadata.
 *   **Usage:** Run `npm run dev`, then point Vibe Kanban’s web preview to the dev server URL.
