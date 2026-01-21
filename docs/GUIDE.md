@@ -119,6 +119,7 @@ A standalone web-based tool for processing raw AI-generated sprite sheets into g
     *   **Visual View Scale:** Non-destructive zoom (50% - 300%) for visual precision.
     *   Full-screen responsive container.
 *   **Editing Tools:**
+    *   **Smart Refine:** One-click pass for the current sprite that tightens a bounding box, auto-centers the sprite on the canvas origin, detects the dominant background color, and removes/cleans background-colored pixels (with a fuzzy threshold).
     *   **Box Eraser:** Instant mass-clearing of whitespace/transparent areas.
     *   **Standard Tools:** Pixel brush, eraser, paint bucket, and eyedropper.
     *   **Non-Destructive Move:** Shift layers without losing pixel data.

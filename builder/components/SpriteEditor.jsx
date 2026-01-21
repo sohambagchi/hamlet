@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import JSZip from 'jszip';
-import { Eraser, Paintbrush, ArrowLeft, Download, Layers, Move, PaintBucket, Grid3X3, Undo, ZoomIn, ZoomOut, Pipette, BoxSelect, Save, FileArchive } from 'lucide-react';
+import { Eraser, Paintbrush, ArrowLeft, Download, Layers, Move, PaintBucket, Grid3X3, Undo, ZoomIn, ZoomOut, Pipette, BoxSelect, Save, FileArchive, Sparkles, RotateCcw } from 'lucide-react';
+import { smartRefineImageData } from '../utils/smartRefine';
 
 export default function SpriteEditor({ chunks, onBack, initialEdits = {} }) {
   const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
@@ -14,9 +15,13 @@ export default function SpriteEditor({ chunks, onBack, initialEdits = {} }) {
   const [onionOffset, setOnionOffset] = useState({ x: 0, y: 0, scale: 1 });
   const [bgColor, setBgColor] = useState('#222222');
   const [viewScale, setViewScale] = useState(1);
+  const [isSmartRefining, setIsSmartRefining] = useState(false);
 
   const editsRef = useRef(initialEdits);
   const prevChunkIndex = useRef(0);
+  const smartRefineBackupRef = useRef(null);
+  const isMountedRef = useRef(true);
+  const smartRefineRunRef = useRef(0);
 
   // State tracking refs for saving without re-renders
   const offsetRef = useRef({ x: 0, y: 0 });
@@ -242,6 +247,13 @@ export default function SpriteEditor({ chunks, onBack, initialEdits = {} }) {
   useEffect(() => {
     prevChunkIndex.current = 0;
     loadChunk(0);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      smartRefineRunRef.current += 1;
+    };
   }, []);
 
   const renderCanvas = () => {
@@ -536,18 +548,141 @@ export default function SpriteEditor({ chunks, onBack, initialEdits = {} }) {
     link.click();
   };
 
+  const cloneImageData = (imageData) => {
+    return new ImageData(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height);
+  };
+
+  const getChunkImageData = async (index) => {
+    const edit = editsRef.current[index];
+    if (edit && edit.data) return cloneImageData(edit.data);
+
+    const blob = chunks[index].blob;
+    const bitmap = await createImageBitmap(blob);
+    const c = document.createElement('canvas');
+    c.width = 64;
+    c.height = 64;
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(bitmap, 0, 0, 64, 64);
+    return ctx.getImageData(0, 0, 64, 64);
+  };
+
+  const handleSmartRefineCurrent = async () => {
+    if (isSmartRefining) return;
+    if (!chunks || chunks.length === 0) return;
+
+    const runId = smartRefineRunRef.current + 1;
+    smartRefineRunRef.current = runId;
+
+    // Ensure we capture the current sprite's latest pixels before processing.
+    handleSaveMemory();
+
+    if (isMountedRef.current) setIsSmartRefining(true);
+
+    const index = currentIndexRef.current;
+    const existing = editsRef.current[index] || {};
+    if (!smartRefineBackupRef.current) smartRefineBackupRef.current = {};
+    smartRefineBackupRef.current[index] = {
+      data: existing.data ? cloneImageData(existing.data) : null,
+      offset: existing.offset ? { ...existing.offset } : null,
+      metadata: existing.metadata ? { ...existing.metadata } : null,
+      smartRefine: existing.smartRefine ? { ...existing.smartRefine } : null
+    };
+
+    try {
+      if (smartRefineRunRef.current !== runId) return;
+
+      const baseImageData = await getChunkImageData(index);
+      const result = smartRefineImageData(baseImageData);
+
+      if (!editsRef.current[index]) editsRef.current[index] = {};
+      editsRef.current[index].data = result.imageData;
+      editsRef.current[index].offset = result.offset;
+      editsRef.current[index].smartRefine = {
+        bgColor: result.background.a === 0 ? 'transparent' : result.background.hex,
+        bbox: result.bbox
+      };
+
+      // Apply immediately to the live canvas so the user can see the effect right away.
+      if (layerRef.current) {
+        saveToHistory();
+        const layerCtx = layerRef.current.getContext('2d');
+        layerCtx.putImageData(result.imageData, 0, 0);
+        const p = quantizeImage(layerCtx);
+        setPalette(p);
+        if (p.length > 0 && !p.includes(color)) setColor(p[0]);
+      }
+
+      setOffset(result.offset);
+      if (result.background.a > 0) setBgColor(result.background.hex);
+      renderCanvas();
+    } catch (err) {
+      console.error(err);
+      alert(`Smart Refine failed: ${err.message || err}`);
+    } finally {
+      if (smartRefineRunRef.current === runId && isMountedRef.current) {
+        setIsSmartRefining(false);
+        // Keep the current view updated, but avoid re-loading if we're already on it.
+        if (currentIndexRef.current !== currentChunkIndex) loadChunk(currentIndexRef.current);
+      }
+    }
+  };
+
+  const handleRevertSmartRefineCurrent = async () => {
+    if (isSmartRefining) return;
+    if (!smartRefineBackupRef.current) return;
+
+    const index = currentIndexRef.current;
+    const saved = smartRefineBackupRef.current[index];
+    if (!saved) return;
+    if (!editsRef.current[index]) editsRef.current[index] = {};
+
+    if (saved.data) editsRef.current[index].data = cloneImageData(saved.data);
+    else delete editsRef.current[index].data;
+
+    if (saved.offset) editsRef.current[index].offset = { ...saved.offset };
+    else delete editsRef.current[index].offset;
+
+    if (saved.metadata) editsRef.current[index].metadata = { ...saved.metadata };
+    else delete editsRef.current[index].metadata;
+
+    if (saved.smartRefine) editsRef.current[index].smartRefine = { ...saved.smartRefine };
+    else delete editsRef.current[index].smartRefine;
+
+    delete smartRefineBackupRef.current[index];
+    if (Object.keys(smartRefineBackupRef.current).length === 0) smartRefineBackupRef.current = null;
+
+    if (layerRef.current && editsRef.current[index].data) {
+      const layerCtx = layerRef.current.getContext('2d');
+      layerCtx.putImageData(editsRef.current[index].data, 0, 0);
+      const p = quantizeImage(layerCtx);
+      setPalette(p);
+      if (p.length > 0 && !p.includes(color)) setColor(p[0]);
+    }
+
+    if (editsRef.current[index].offset) setOffset(editsRef.current[index].offset);
+    renderCanvas();
+  };
+
+  const currentSmartRefine = editsRef.current[currentChunkIndex]?.smartRefine;
+  const currentSmartBbox = currentSmartRefine?.bbox;
+  const currentSmartBboxSize = currentSmartBbox ? {
+    w: currentSmartBbox.maxX - currentSmartBbox.minX + 1,
+    h: currentSmartBbox.maxY - currentSmartBbox.minY + 1
+  } : null;
+
   return (
     <div className="editor-container">
       {/* Left Sidebar: Navigation */}
       <div className="sidebar-left">
-        <button className="back-btn" onClick={onBack}>
+        <button className="back-btn" onClick={() => !isSmartRefining && onBack()} disabled={isSmartRefining} style={{ opacity: isSmartRefining ? 0.4 : 1, cursor: isSmartRefining ? 'not-allowed' : 'pointer' }}>
           <ArrowLeft size={16} /> Back
         </button>
         <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Sprite {currentChunkIndex + 1} / {chunks.length}</h3>
 
         <div className="chunk-list" style={{ overflowY: 'auto', flex: 1 }}>
           {chunks.map((c, i) => (
-            <div key={i} className={`chunk-thumb ${i === currentChunkIndex ? 'active' : ''}`} onClick={() => setCurrentChunkIndex(i)}>
+            <div key={i} className={`chunk-thumb ${i === currentChunkIndex ? 'active' : ''}`} onClick={() => !isSmartRefining && setCurrentChunkIndex(i)}>
               {i + 1}
             </div>
           ))}
@@ -574,7 +709,47 @@ export default function SpriteEditor({ chunks, onBack, initialEdits = {} }) {
           <div style={{ width: '1px', height: '20px', background: '#333', margin: '0 0.5rem' }}></div>
           <button className={`tool-btn ${showGrid ? 'active' : ''}`} onClick={() => setShowGrid(!showGrid)} title="Grid" style={{ maxWidth: '40px' }}><Grid3X3 size={20} /></button>
           <button className={`tool-btn ${showOnion ? 'active' : ''}`} onClick={() => setShowOnion(!showOnion)} title="Onion Skin" style={{ maxWidth: '40px' }}><Layers size={20} /></button>
+
+          <div style={{ width: '1px', height: '20px', background: '#333', margin: '0 0.5rem' }}></div>
+
+          <button
+            onClick={handleSmartRefineCurrent}
+            disabled={isSmartRefining}
+            title="Smart Refine: auto-center + background cleanup for current sprite"
+            className="tool-btn"
+            style={{ flex: '0 0 auto', padding: '0.5rem 0.75rem', gap: '0.5rem', opacity: isSmartRefining ? 0.6 : 1 }}
+          >
+            <Sparkles size={18} />
+            <span style={{ fontSize: '0.85rem', color: 'inherit' }}>{isSmartRefining ? 'Refining…' : 'Smart Refine'}</span>
+          </button>
+
+          <button
+            onClick={handleRevertSmartRefineCurrent}
+            disabled={isSmartRefining || !smartRefineBackupRef.current || !smartRefineBackupRef.current[currentChunkIndex]}
+            title="Revert the last Smart Refine run"
+            className="tool-btn"
+            style={{ flex: '0 0 auto', maxWidth: '44px', opacity: (isSmartRefining || !smartRefineBackupRef.current || !smartRefineBackupRef.current[currentChunkIndex]) ? 0.4 : 1 }}
+          >
+            <RotateCcw size={18} />
+          </button>
         </div>
+
+        {isSmartRefining && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 100,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'column',
+            gap: '0.5rem',
+            pointerEvents: 'auto'
+          }}>
+            <div style={{ fontWeight: 'bold' }}>Smart refining sprite…</div>
+          </div>
+        )}
 
         {/* Canvas Stage */}
         <div className="canvas-stage" style={{ overflow: 'auto', padding: '2rem' }}>
@@ -607,6 +782,21 @@ export default function SpriteEditor({ chunks, onBack, initialEdits = {} }) {
               </div>
             )}
 
+            {/* Smart Refine Bounding Box */}
+            {currentSmartBbox && (
+              <div style={{
+                position: 'absolute',
+                zIndex: 12,
+                left: (currentSmartBbox.minX + offset.x) * (512 * viewScale / 64) + 'px',
+                top: (currentSmartBbox.minY + offset.y) * (512 * viewScale / 64) + 'px',
+                width: (currentSmartBbox.maxX - currentSmartBbox.minX + 1) * (512 * viewScale / 64) + 'px',
+                height: (currentSmartBbox.maxY - currentSmartBbox.minY + 1) * (512 * viewScale / 64) + 'px',
+                border: '2px solid rgba(100, 108, 255, 0.9)',
+                boxShadow: '0 0 0 1px rgba(0,0,0,0.6) inset',
+                pointerEvents: 'none'
+              }} />
+            )}
+
             {/* Box Selection Overlay */}
             {boxSelection && (
               <div style={{
@@ -635,6 +825,34 @@ export default function SpriteEditor({ chunks, onBack, initialEdits = {} }) {
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
             <label style={{ fontSize: '0.8rem', color: '#888' }}>BG:</label>
             <input type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)} style={{ width: '30px', height: '30px', border: 'none', background: 'none', cursor: 'pointer' }} />
+
+            {currentSmartRefine && (
+              <>
+                <div style={{ width: '1px', height: '24px', background: '#333', margin: '0 0.5rem' }}></div>
+                <label style={{ fontSize: '0.8rem', color: '#888' }}>Auto BG:</label>
+                <div
+                  title={currentSmartRefine.bgColor}
+                  style={{
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '4px',
+                    background: currentSmartRefine.bgColor === 'transparent'
+                      ? 'conic-gradient(#333 90deg, #444 90deg 180deg, #333 180deg 270deg, #444 270deg)'
+                      : currentSmartRefine.bgColor,
+                    backgroundSize: currentSmartRefine.bgColor === 'transparent' ? '8px 8px' : 'auto',
+                    border: '1px solid #444'
+                  }}
+                />
+                <span style={{ fontSize: '0.8rem', color: '#aaa', fontFamily: 'monospace' }}>
+                  {currentSmartRefine.bgColor}
+                </span>
+                {currentSmartBboxSize && (
+                  <span style={{ fontSize: '0.8rem', color: '#888', fontFamily: 'monospace' }}>
+                    BBox {currentSmartBboxSize.w}x{currentSmartBboxSize.h}
+                  </span>
+                )}
+              </>
+            )}
 
             <div style={{ width: '1px', height: '24px', background: '#333', margin: '0 0.5rem' }}></div>
 
